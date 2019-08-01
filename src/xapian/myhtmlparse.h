@@ -38,10 +38,13 @@ class MyHtmlParser : public HtmlParser {
 	bool pending_space;
 	bool indexing_allowed;
 	bool charset_from_meta;
+    float latitude, longitude;
+    bool has_geoPosition;
 	string title, sample, keywords, dump;
 	void process_text(const string &text);
 	void opening_tag(const string &tag);
 	void closing_tag(const string &tag);
+	using HtmlParser::parse_html;
 	void parse_html(const string &text, const string &charset_,
 			bool charset_from_meta_);
 	MyHtmlParser() :
@@ -49,7 +52,8 @@ class MyHtmlParser : public HtmlParser {
 		in_style_tag(false),
 		pending_space(false),
 		indexing_allowed(true),
-		charset_from_meta(false) { }
+		charset_from_meta(false),
+        latitude(0), longitude(0), has_geoPosition(false) { }
 
 	void reset() {
 	    in_script_tag = false;
@@ -57,6 +61,8 @@ class MyHtmlParser : public HtmlParser {
 	    pending_space = false;
 	    indexing_allowed = true;
 	    charset_from_meta = false;
+        latitude = longitude = 0;
+        has_geoPosition = false;
 	    title.resize(0);
 	    sample.resize(0);
 	    keywords.resize(0);

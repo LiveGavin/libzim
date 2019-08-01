@@ -3,45 +3,32 @@
 set -e
 
 REPO_NAME=${TRAVIS_REPO_SLUG#*/}
-ARCHIVE_NAME=deps_${PLATFORM}_${REPO_NAME}.tar.gz
-
-# Packages.
-case ${PLATFORM} in
-     "native_static")
-         PACKAGES="gcc cmake libbz2-dev ccache zlib1g-dev uuid-dev"
-         ;;
-     "native_dyn")
-         PACKAGES="gcc cmake libbz2-dev ccache zlib1g-dev uuid-dev"
-         ;;
-     "win32_static")
-         PACKAGES="g++-mingw-w64-i686 gcc-mingw-w64-i686 gcc-mingw-w64-base mingw-w64-tools ccache"
-         ;;
-     "win32_dyn")
-         PACKAGES="g++-mingw-w64-i686 gcc-mingw-w64-i686 gcc-mingw-w64-base mingw-w64-tools ccache"
-         ;;
-     "android_arm")
-         PACKAGES="gcc cmake ccache"
-         ;;
-     "android_arm64")
-         PACKAGES="gcc cmake ccache"
-         ;;
-esac
-
-sudo apt-get update -qq
-sudo apt-get install -qq python3-pip ${PACKAGES}
-sudo pip3 install meson
+ARCHIVE_NAME=deps_${TRAVIS_OS_NAME}_${PLATFORM}_${REPO_NAME}.tar.xz
 
 # Ninja
 cd $HOME
-git clone git://github.com/ninja-build/ninja.git
-cd ninja
-git checkout release
-./configure.py --bootstrap
-sudo cp ninja /bin
+if [[ "$TRAVIS_OS_NAME" == "osx" ]]
+then
+  brew update
+  brew install gcovr
+#  brew upgrade python3
+  pip3 install meson==0.49.2 pytest
+
+  wget https://github.com/ninja-build/ninja/releases/download/v1.8.2/ninja-mac.zip
+  unzip ninja-mac.zip ninja
+else
+  wget https://bootstrap.pypa.io/get-pip.py
+  python3.5 get-pip.py --user
+  python3.5 -m pip install --user meson==0.49.2
+
+  wget https://github.com/ninja-build/ninja/releases/download/v1.8.2/ninja-linux.zip
+  unzip ninja-linux.zip ninja
+fi
+
+mkdir -p $HOME/bin
+cp ninja $HOME/bin
 
 # Dependencies comming from kiwix-build.
 cd ${HOME}
 wget http://tmp.kiwix.org/ci/${ARCHIVE_NAME}
-mkdir -p BUILD_${PLATFORM}
-cd BUILD_${PLATFORM}
 tar xf ${HOME}/${ARCHIVE_NAME}

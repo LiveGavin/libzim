@@ -17,37 +17,58 @@
  *
  */
 
-#include <zim/buffer.h>
+#include "buffer.h"
 
 #include <sys/stat.h>
-#include <unistd.h>
 #include <cstdio>
 #include <cstdlib>
 #include <fcntl.h>
+#include <string.h>
+#include <errno.h>
+#include <sstream>
 
-#if !defined(_WIN32)
-#include <sys/mman.h>
+#ifndef _WIN32
+#  include <sys/mman.h>
+#  include <unistd.h>
 #endif
 
 namespace zim {
 
-std::shared_ptr<const Buffer> Buffer::sub_buffer(std::size_t offset, std::size_t size) const
+std::shared_ptr<const Buffer> Buffer::sub_buffer(offset_t offset, zsize_t size) const
 {
   return std::make_shared<SubBuffer>(shared_from_this(), offset, size);
 }
 
-#if !defined(_WIN32)
-MMapBuffer::MMapBuffer(int fd, std::size_t offset, std::size_t size):
-  Buffer(size)
+#ifdef ENABLE_USE_MMAP
+MMapBuffer::MMapBuffer(int fd, offset_t offset, zsize_t size):
+  Buffer(size),
+  _offset(0)
 {
-  std::size_t pa_offset = offset & ~(sysconf(_SC_PAGE_SIZE) - 1);
+  offset_t pa_offset(offset.v & ~(sysconf(_SC_PAGE_SIZE) - 1));
   _offset = offset-pa_offset;
-  _data = (char*)mmap(NULL, size + _offset, PROT_READ, MAP_PRIVATE|MAP_POPULATE, fd, pa_offset);
+#if defined(__APPLE__)
+  #define MAP_FLAGS MAP_PRIVATE
+#else
+  #define MAP_FLAGS MAP_PRIVATE|MAP_POPULATE
+#endif
+#if !MMAP_SUPPORT_64
+  if(pa_offset.v >= INT32_MAX) {
+    throw MMapException();
+  }
+#endif
+  _data = (char*)mmap(NULL, size.v + _offset.v, PROT_READ, MAP_FLAGS, fd, pa_offset.v);
+  if (_data == MAP_FAILED )
+  {
+    std::ostringstream s;
+    s << "Cannot mmap size " << size.v << " at off " << offset.v << " : " << strerror(errno);
+    throw std::runtime_error(s.str());
+  }
+#undef MAP_FLAGS
 }
 
 MMapBuffer::~MMapBuffer()
 {
-  munmap(_data, size_ + _offset);
+  munmap(_data, size_.v + _offset.v);
 }
 
 #endif

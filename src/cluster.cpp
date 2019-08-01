@@ -17,11 +17,12 @@
  *
  */
 
-#include <zim/cluster.h>
+#include "cluster.h"
 #include <zim/blob.h>
-#include "endian_tools.h"
 #include <zim/error.h>
-#include <zim/file_reader.h>
+#include "file_reader.h"
+#include "endian_tools.h"
+#include <algorithm>
 #include <stdlib.h>
 #include <sstream>
 
@@ -35,70 +36,108 @@ log_define("zim.cluster")
 
 namespace zim
 {
-  Cluster::Cluster(std::shared_ptr<const Reader> reader_, CompressionType comp)
+  Cluster::Cluster(std::shared_ptr<const Reader> reader_, CompressionType comp, bool isExtended)
     : compression(comp),
+      isExtended(isExtended),
       reader(reader_),
       startOffset(0)
   {
     auto d = reader->offset();
-    startOffset = read_header();
+    if (isExtended) {
+      startOffset = read_header<uint64_t>();
+    } else {
+      startOffset = read_header<uint32_t>();
+    }
     reader = reader->sub_reader(startOffset);
     auto d1 = reader->offset();
-    assert((d+startOffset)==d1);
+    ASSERT(d+startOffset, ==, d1);
   }
 
   /* This return the number of char read */
-  offset_type Cluster::read_header()
+  template<typename OFFSET_TYPE>
+  offset_t Cluster::read_header()
   {
     // read first offset, which specifies, how many offsets we need to read
-    size_type offset;
-    offset = reader->read<size_type>(0);
-    offset = fromLittleEndian(&offset);
+    OFFSET_TYPE offset;
+    offset = reader->read<OFFSET_TYPE>(offset_t(0));
 
-    size_type n_offset = offset / 4;
-    size_type data_address = offset;
+    size_t n_offset = offset / sizeof(OFFSET_TYPE);
+    offset_t data_address(offset);
 
     // read offsets
     offsets.clear();
     offsets.reserve(n_offset);
-    offsets.push_back(0);
+    offsets.push_back(offset_t(0));
     
-    auto buffer = reader->get_buffer(0, offset);
-    std::size_t current = 4;
+    auto buffer = reader->get_buffer(offset_t(0), zsize_t(offset));
+    offset_t current = offset_t(sizeof(OFFSET_TYPE));
     while (--n_offset)
     {
-      size_type new_offset = fromLittleEndian(buffer->as<size_type>(current));
-      assert(new_offset >= offset);
-      assert(offset >= data_address);
-      assert(offset <= reader->size());
+      OFFSET_TYPE new_offset = buffer->as<OFFSET_TYPE>(current);
+      ASSERT(new_offset, >=, offset);
+      ASSERT(offset, >=, data_address.v);
+      ASSERT(offset, <=, reader->size().v);
       
       offset = new_offset;
-      offsets.push_back(offset - data_address);
-      current += sizeof(size_type);
+      offsets.push_back(offset_t(offset - data_address.v));
+      current += sizeof(OFFSET_TYPE);
     }
-    assert(offset==reader->size());
+    ASSERT(offset, ==, reader->size().v);
     return data_address;
   }
 
-  Blob Cluster::getBlob(size_type n) const
+  Blob Cluster::getBlob(blob_index_t n) const
   {
     if (size()) {
-      auto buffer = reader->get_buffer(offsets[n], getBlobSize(n));
+      auto blobSize = getBlobSize(n);
+      if (blobSize.v > SIZE_MAX) {
+        return Blob();
+      }
+      auto buffer = reader->get_buffer(offsets[blob_index_type(n)], getBlobSize(n));
       return Blob(buffer);
     } else {
       return Blob();
     }
   }
 
-  const char* Cluster::getBlobPtr(unsigned n) const
+  Blob Cluster::getBlob(blob_index_t n, offset_t offset, zsize_t size) const
   {
-     auto d = reader->get_buffer(offsets[n], getBlobSize(n))->data();
-     return d;
+    if (this->size()) {
+      offset += offsets[blob_index_type(n)];
+      size = std::min(size, getBlobSize(n));
+      if (size.v > SIZE_MAX) {
+        return Blob();
+      }
+      auto buffer = reader->get_buffer(offset, size);
+      return Blob(buffer);
+    } else {
+      return Blob();
+    }
   }
 
-  size_type Cluster::size() const
+  zsize_t Cluster::size() const
   {
-    return offsets.size() * sizeof(size_type) + reader->size();
+    if (isExtended)
+      return zsize_t(offsets.size() * sizeof(uint64_t) + reader->size().v);
+    else
+      return zsize_t(offsets.size() * sizeof(uint32_t) + reader->size().v);
+  }
+
+  template<typename OFFSET_TYPE>
+  zsize_t _read_size(const Reader* reader, offset_t offset)
+  {
+    OFFSET_TYPE blob_offset = reader->read<OFFSET_TYPE>(offset);
+    auto off = offset+offset_t(blob_offset-sizeof(OFFSET_TYPE));
+    auto s = reader->read<OFFSET_TYPE>(off);
+    return zsize_t(s);
+  }
+
+  zsize_t Cluster::read_size(const Reader* reader, bool isExtended, offset_t offset)
+  {
+    if (isExtended)
+      return _read_size<uint64_t>(reader, offset);
+    else
+      return _read_size<uint32_t>(reader, offset);
   }
 
 }

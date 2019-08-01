@@ -20,7 +20,7 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
-#include <zim/writer/zimcreator.h>
+#include <zim/writer/creator.h>
 #include <zim/blob.h>
 
 class TestArticle : public zim::writer::Article
@@ -31,14 +31,18 @@ class TestArticle : public zim::writer::Article
   public:
     TestArticle()  { }
     explicit TestArticle(const std::string& id);
+    virtual ~TestArticle() = default;
 
     virtual std::string getAid() const;
-    virtual char getNamespace() const;
-    virtual std::string getUrl() const;
+    virtual zim::writer::Url getUrl() const;
     virtual std::string getTitle() const;
     virtual bool isRedirect() const;
+    virtual bool shouldCompress() const { return true; }
     virtual std::string getMimeType() const;
-    virtual std::string getRedirectAid() const;
+    virtual zim::writer::Url getRedirectUrl() const;
+    virtual bool shouldIndex() const { return false; }
+    virtual zim::size_type getSize() const { return _data.size(); }
+    virtual std::string getFilename() const { return ""; }
 
     virtual zim::Blob getData() const
     { return zim::Blob(&_data[0], _data.size()); }
@@ -57,14 +61,9 @@ std::string TestArticle::getAid() const
   return _id;
 }
 
-char TestArticle::getNamespace() const
+zim::writer::Url TestArticle::getUrl() const
 {
-  return 'A';
-}
-
-std::string TestArticle::getUrl() const
-{
-  return _id;
+  return zim::writer::Url('A', _id);
 }
 
 std::string TestArticle::getTitle() const
@@ -82,25 +81,15 @@ std::string TestArticle::getMimeType() const
   return "text/plain";
 }
 
-std::string TestArticle::getRedirectAid() const
+zim::writer::Url TestArticle::getRedirectUrl() const
 {
-  return "";
+  return zim::writer::Url();
 }
 
-class TestArticleSource : public zim::writer::ArticleSource
+int main(int argc, char* argv[])
 {
-    std::vector<TestArticle> _articles;
-    unsigned _next;
-
-  public:
-    explicit TestArticleSource(unsigned max = 16);
-
-    virtual const zim::writer::Article* getNextArticle();
-};
-
-TestArticleSource::TestArticleSource(unsigned max)
-  : _next(0)
-{
+  std::vector<TestArticle> _articles;
+  unsigned max = 16;
   _articles.resize(max);
   for (unsigned n = 0; n < max; ++n)
   {
@@ -108,25 +97,15 @@ TestArticleSource::TestArticleSource(unsigned max)
     id << (n + 1);
     _articles[n] = TestArticle(id.str());
   }
-}
-
-const zim::writer::Article* TestArticleSource::getNextArticle()
-{
-  if (_next >= _articles.size())
-    return 0;
-
-  unsigned n = _next++;
-
-  return &_articles[n];
-}
-
-int main(int argc, char* argv[])
-{
   try
   {
-    zim::writer::ZimCreator c(argc, argv);
-    TestArticleSource src;
-    c.create("foo.zim", src);
+    zim::writer::Creator c;
+    c.startZimCreation("foo.zim");
+    for (auto& article:_articles)
+    {
+      c.addArticle(article);
+    }
+    c.finishZimCreation();
   }
   catch (const std::exception& e)
   {

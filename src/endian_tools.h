@@ -27,94 +27,59 @@
 namespace zim
 {
 
-/// Returns true, if machine is big-endian (high byte first).
-/// e.g. PowerPC
-inline bool isBigEndian()
-{
-  const int i = 1;
-  return *reinterpret_cast<const int8_t*>(&i) == 0;
-}
+template<typename T, size_t N>
+struct ToLittleEndianImpl;
 
-/// Returns true, if machine is little-endian (low byte first).
-/// e.g. x86
-inline bool isLittleEndian()
-{
-  const int i = 1;
-  return *reinterpret_cast<const int8_t*>(&i) == 1;
-}
+template<typename T>
+struct ToLittleEndianImpl<T, 2>{
+  static void write(const T& d, char* dst) {
+    uint16_t v = static_cast<uint16_t>(d);
+    dst[0] = static_cast<uint8_t>(v);
+    dst[1] = static_cast<uint8_t>(v>>8);
+  }
+};
 
-////////////////////////////////////////////////////////////////////////
-template <typename T>
-void toLittleEndian(const T& d, char* dst, bool bigEndian = isBigEndian())
-{
-  if (bigEndian)
-  {
-    std::reverse_copy(
-      reinterpret_cast<const char*>(&d),
-      reinterpret_cast<const char*>(&d) + sizeof(T),
-      dst);
-  }
-  else
-  {
-    std::copy(
-      reinterpret_cast<const char*>(&d),
-      reinterpret_cast<const char*>(&d) + sizeof(T),
-      dst);
-  }
+template<typename T>
+struct ToLittleEndianImpl<T, 4>{
+  static void write(const T& d, char* dst) {
+    uint32_t v = static_cast<uint32_t>(d);
+    dst[0] = static_cast<uint8_t>(v);
+    dst[1] = static_cast<uint8_t>(v>>8);
+    dst[2] = static_cast<uint8_t>(v>>16);
+    dst[3] = static_cast<uint8_t>(v>>24);
 }
+};
 
-template <typename T>
-T fromLittleEndian(const T* ptr, bool bigEndian = isBigEndian())
-{
-  if (bigEndian)
-  {
-    T ret;
-    std::reverse_copy(reinterpret_cast<const int8_t*>(ptr),
-                      reinterpret_cast<const int8_t*>(ptr) + sizeof(T),
-                      reinterpret_cast<int8_t*>(&ret));
-    return ret;
+template<typename T>
+struct ToLittleEndianImpl<T, 8>{
+  static void write(const T& d, char* dst) {
+    uint64_t v = static_cast<uint64_t>(d);
+    dst[0] = static_cast<uint8_t>(v);
+    dst[1] = static_cast<uint8_t>(v>>8);
+    dst[2] = static_cast<uint8_t>(v>>16);
+    dst[3] = static_cast<uint8_t>(v>>24);
+    dst[4] = static_cast<uint8_t>(v>>32);
+    dst[5] = static_cast<uint8_t>(v>>40);
+    dst[6] = static_cast<uint8_t>(v>>48);
+    dst[7] = static_cast<uint8_t>(v>>56);
   }
-  else
-  {
-    return *ptr;
-  }
-}
+};
 
 ////////////////////////////////////////////////////////////////////////
 template <typename T>
-void toBigEndian(const T& d, char* dst, bool bigEndian = isBigEndian())
+inline void toLittleEndian(T d, char* dst)
 {
-  if (bigEndian)
-  {
-    std::copy(
-      reinterpret_cast<const char*>(&d),
-      reinterpret_cast<const char*>(&d) + sizeof(T),
-      dst);
-  }
-  else
-  {
-    std::reverse_copy(
-      reinterpret_cast<const char*>(&d),
-      reinterpret_cast<const char*>(&d) + sizeof(T),
-      dst);
-  }
+  ToLittleEndianImpl<T, sizeof(T)>::write(d, dst);
 }
 
 template <typename T>
-T fromBigEndian(const T* ptr, bool bigEndian = isBigEndian())
+inline T fromLittleEndian(const char* ptr)
 {
-  if (bigEndian)
-  {
-    return *ptr;
+  T ret = 0;
+  for(size_t i=0; i<sizeof(T); i++) {
+    ret |= (static_cast<T>(static_cast<uint8_t>(ptr[i])) << (i*8));
   }
-  else
-  {
-    T ret;
-    std::reverse_copy(reinterpret_cast<const int8_t*>(ptr),
-                      reinterpret_cast<const int8_t*>(ptr) + sizeof(T),
-                      reinterpret_cast<int8_t*>(&ret));
-    return ret;
-  }
+  return ret;
 }
 
 }

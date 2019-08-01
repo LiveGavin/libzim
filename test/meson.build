@@ -5,7 +5,6 @@ tests = [
     'dirent',
     'header',
     'uuid',
-    'zint',
     'template'
 ]
 
@@ -16,13 +15,18 @@ if lzma_dep.found()
 #    zimlibtest_sources += ['lzmastream.cpp']
 endif
 
-gtest_dep = gtest_sp.get_variable('gtest_dep')
+if gtest_dep.found()
+    foreach test_name : tests
+        test_exe = executable(test_name, [test_name+'.cpp'],
+                              include_directories : [include_directory, src_directory],
+                              link_with : libzim,
+                              link_args: extra_link_args,
+                              dependencies : deps + [gtest_dep],
+                              build_rpath : '$ORIGIN')
+        test(test_name, test_exe, timeout : 60)
+    endforeach
+endif
 
-foreach test_name : tests
-    test_exe = executable(test_name, [test_name+'.cpp'],
-                          include_directories : include_directory,
-                          link_with : libzim,
-                          dependencies : deps + [gtest_dep])
-    test(test_name, test_exe)
-endforeach
-
+if get_option('default_library') != 'static'
+    subdir('pytest')
+endif

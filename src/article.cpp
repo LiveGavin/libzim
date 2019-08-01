@@ -18,7 +18,12 @@
  */
 
 #include <zim/article.h>
-#include <zim/template.h>
+#include "template.h"
+#include "_dirent.h"
+#include "cluster.h"
+#include <zim/fileheader.h>
+#include "fileimpl.h"
+#include "file_part.h"
 #include <sstream>
 #include <iostream>
 #include <stdexcept>
@@ -30,9 +35,9 @@ namespace zim
 {
   size_type Article::getArticleSize() const
   {
-    Dirent dirent = getDirent();
-    return file.getCluster(dirent.getClusterNumber())
-               ->getBlobSize(dirent.getBlobNumber());
+    auto dirent = getDirent();
+    return size_type(file->getCluster(dirent->getClusterNumber())
+                         ->getBlobSize(dirent->getBlobNumber()));
   }
 
   namespace
@@ -41,12 +46,14 @@ namespace zim
     {
         std::ostream& out;
         Article& article;
+        std::shared_ptr<FileImpl> file;
         unsigned maxRecurse;
 
       public:
-        Ev(std::ostream& out_, Article& article_, unsigned maxRecurse_)
+        Ev(std::ostream& out_, Article& article_, std::shared_ptr<FileImpl> file_, unsigned maxRecurse_)
           : out(out_),
             article(article_),
+            file(file_),
             maxRecurse(maxRecurse_)
           { }
         void onData(const std::string& data);
@@ -86,8 +93,141 @@ namespace zim
     {
       if (maxRecurse <= 0)
         throw std::runtime_error("maximum recursive limit is reached");
-      article.getFile().getArticle(ns, url).getPage(out, false, maxRecurse - 1);
+      std::pair<bool, article_index_t> r = file->findx(ns, url);
+      if (r.first) {
+          Article(file, article_index_type(r.second)).getPage(out, false, maxRecurse - 1);
+      } else {
+          throw std::runtime_error(std::string("impossible to find article ") + std::string(1, ns) + std::string("/") + url);
+      }
     }
+
+  }
+
+  std::shared_ptr<const Dirent> Article::getDirent() const
+  {
+    return file->getDirent(article_index_t(idx));
+  }
+
+  std::string Article::getParameter() const
+  {
+    return getDirent()->getParameter();
+  }
+
+  std::string Article::getTitle() const
+  {
+    return getDirent()->getTitle();
+  }
+
+  std::string Article::getUrl() const
+  {
+    return getDirent()->getUrl();
+  }
+
+  std::string Article::getLongUrl() const
+  {
+    return getDirent()->getLongUrl();
+  }
+
+  uint16_t Article::getLibraryMimeType() const
+  {
+    return getDirent()->getMimeType();
+  }
+
+  const std::string& Article::getMimeType() const
+  {
+    return file->getMimeType(getLibraryMimeType());
+  }
+
+  bool Article::isRedirect() const
+  {
+    return getDirent()->isRedirect();
+  }
+
+  bool Article::isLinktarget() const
+  {
+    return getDirent()->isLinktarget();
+  }
+
+  bool Article::isDeleted() const
+  {
+    return getDirent()->isDeleted();
+  }
+
+  char Article::getNamespace() const
+  {
+    return getDirent()->getNamespace();
+  }
+
+  article_index_type Article::getRedirectIndex() const
+  {
+    return article_index_type(getDirent()->getRedirectIndex());
+  }
+
+  Article Article::getRedirectArticle() const
+  {
+    return Article(file, getRedirectIndex());
+  }
+
+  std::shared_ptr<const Cluster> Article::getCluster() const
+  {
+    auto dirent = getDirent();
+    if ( dirent->isRedirect()
+      || dirent->isLinktarget()
+      || dirent->isDeleted() ) {
+      return std::shared_ptr<const Cluster>();
+    }
+    return file->getCluster(dirent->getClusterNumber());
+  }
+
+  Blob Article::getData(offset_type offset) const
+  {
+    auto size = getArticleSize()-offset;
+    return getData(offset, size);
+  }
+
+  Blob Article::getData(offset_type offset, size_type size) const
+  {
+    std::shared_ptr<const Cluster> cluster = getCluster();
+    if (!cluster) {
+      return Blob();
+    }
+    return cluster->getBlob(getDirent()->getBlobNumber(), offset_t(offset), zsize_t(size));
+  }
+
+  offset_type Article::getOffset() const
+  {
+    auto dirent = getDirent();
+    if (dirent->isRedirect()
+        || dirent->isLinktarget()
+        || dirent->isDeleted())
+        return 0;
+    return offset_type(file->getBlobOffset(dirent->getClusterNumber(), dirent->getBlobNumber()));
+  }
+
+  std::pair<std::string, offset_type> Article::getDirectAccessInformation() const
+  {
+    auto dirent = getDirent();
+    if ( dirent->isRedirect()
+      || dirent->isLinktarget()
+      || dirent->isDeleted() ) {
+        return std::make_pair("", 0);
+    }
+
+    auto full_offset = file->getBlobOffset(dirent->getClusterNumber(),
+                                           dirent->getBlobNumber());
+
+    if (!full_offset) {
+      // cluster is compressed
+      return std::make_pair("", 0);
+    }
+    auto part_its = file->getFileParts(full_offset, zsize_t(getArticleSize()));
+    auto range = part_its.first->first;
+    auto part = part_its.first->second;
+    if (++part_its.first != part_its.second) {
+      return std::make_pair("", 0);
+    }
+    auto local_offset = full_offset - range.min;
+    return std::make_pair(part->filename(), offset_type(local_offset));
 
   }
 
@@ -104,12 +244,12 @@ namespace zim
 
     if (getMimeType().compare(0, 9, "text/html") == 0 || getMimeType() == MimeHtmlTemplate)
     {
-      if (layout && file.getFileheader().hasLayoutPage())
+      if (layout && file->getFileheader().hasLayoutPage())
       {
-        Article layoutPage = file.getArticle(file.getFileheader().getLayoutPage());
+        Article layoutPage(file, file->getFileheader().getLayoutPage());
         Blob data = layoutPage.getData();
 
-        Ev ev(out, *this, maxRecurse);
+        Ev ev(out, *this, file, maxRecurse);
         log_debug("call template parser");
         TemplateParser parser(&ev);
         for (const char* p = data.data(); p != data.end(); ++p)
@@ -122,7 +262,7 @@ namespace zim
       {
         Blob data = getData();
 
-        Ev ev(out, *this, maxRecurse);
+        Ev ev(out, *this, file, maxRecurse);
         TemplateParser parser(&ev);
         for (const char* p = data.data(); p != data.end(); ++p)
           parser.parse(*p);

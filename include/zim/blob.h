@@ -20,39 +20,31 @@
 #ifndef ZIM_BLOB_H
 #define ZIM_BLOB_H
 
+#include "zim.h"
+
 #include <iostream>
 #include <string>
-#include <zim/cluster.h>
 #include <algorithm>
+#include <memory>
 
 namespace zim
 {
+  class Buffer;
   class Blob
   {
       const char* _data;
-      unsigned _size;
+      size_type _size;
       std::shared_ptr<const Buffer> _buffer;
 
     public:
-      Blob()
-        : _data(0), _size(0)
-          { }
-
-      Blob(const char* data, unsigned size)
-        : _data(data),
-          _size(size)
-          { }
-
-      Blob(std::shared_ptr<const Buffer> buffer)
-        : _data(buffer->data()),
-          _size(buffer->size()),
-          _buffer(buffer)
-          {}
+      Blob();
+      Blob(const char* data, size_type size);
+      Blob(std::shared_ptr<const Buffer> buffer);
 
       operator std::string() const { return std::string(_data, _size); }
       const char* data() const  { return _data; }
       const char* end() const   { return _data + _size; }
-      unsigned size() const     { return _size; }
+      size_type size() const     { return _size; }
   };
 
   inline std::ostream& operator<< (std::ostream& out, const Blob& blob)

@@ -22,8 +22,12 @@
 #include <sstream>
 
 #include "gtest/gtest.h"
-
-#include <unistd.h>
+#ifdef _WIN32
+# include <windows.h>
+# include <synchapi.h>
+#else
+# include <unistd.h>
+#endif
 
 namespace
 {
@@ -90,7 +94,11 @@ TEST(UuidTest, generate)
   // same during generating uuid1 and uuid2 leading to test
   // failure. To bring the time difference between 2 sleep for a
   // second. Thanks to Pino Toscano.
+#ifdef _WIN32
+  Sleep(1000);
+#else
   sleep(1);
+#endif
 
   uuid2 = zim::Uuid::generate();
   ASSERT_TRUE(uuid1 != uuid2);

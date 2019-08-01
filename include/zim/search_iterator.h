@@ -26,7 +26,7 @@
 
 namespace zim
 {
-
+class Search;
 class search_iterator : public std::iterator<std::bidirectional_iterator_tag, Article>
 {
     friend class zim::Search;
@@ -57,7 +57,7 @@ class search_iterator : public std::iterator<std::bidirectional_iterator_tag, Ar
         pointer operator->() const;
 
     private:
-        class InternalData;
+        struct InternalData;
         std::unique_ptr<InternalData> internal;
         search_iterator(InternalData* internal_data);
 

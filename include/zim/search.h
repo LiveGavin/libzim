@@ -32,7 +32,7 @@ class File;
 class Search
 {
     friend class search_iterator;
-    friend class search_iterator::InternalData;
+    friend struct search_iterator::InternalData;
     public:
         typedef search_iterator iterator;
 
@@ -44,8 +44,11 @@ class Search
         Search& operator=(Search&& it);
         ~Search();
 
+        void set_verbose(bool verbose);
+
         Search& add_zimfile(const File* zimfile);
         Search& set_query(const std::string& query);
+        Search& set_georange(float latitude, float longitude, float distance);
         Search& set_range(int start, int end);
         Search& set_suggestion_mode(bool suggestion_mode);
 
@@ -54,18 +57,23 @@ class Search
         int get_matches_estimated() const;
 
     private:
-         class InternalData;
+         struct InternalData;
          std::unique_ptr<InternalData> internal;
          std::vector<const File*> zimfiles;
 
          mutable std::map<std::string, int> valuesmap;
          mutable std::string prefixes;
          std::string query;
+         float latitude;
+         float longitude;
+         float distance;
          int range_start;
          int range_end;
          bool suggestion_mode;
+         bool geo_query;
          mutable bool search_started;
          mutable bool has_database;
+         mutable bool verbose;
          mutable int estimated_matches_number;
 };
 
